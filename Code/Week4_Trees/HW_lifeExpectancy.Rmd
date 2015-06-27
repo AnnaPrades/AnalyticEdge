@@ -1,0 +1,161 @@
+---
+title: 'State-Data: Predicting life expectancy using regression trees'
+author: "Anna Prades"
+date: "Saturday, June 27, 2015"
+output: html_document
+---
+We will be revisiting the "state" dataset from one of the optional problems in Unit 2. This dataset has, for each of the fifty U.S. states, the population, per capita income, illiteracy rate, murder rate, high school graduation rate, average number of frost days, area, latitude and longitude, division the state belongs to, region the state belongs to, and two-letter abbreviation. This dataset comes from the U.S. Department of Commerce, Bureau of the Census.
+
+Load the dataset into R and convert it to a data frame by running the following two commands in R:
+
+```{r}
+data(state)
+statedata = data.frame(state.x77)
+str(statedata)
+```
+This dataset has 50 observations (one for each US state) and the following 8 variables:
+
+  *  Population - the population estimate of the state in 1975
+   * Income - per capita income in 1974
+  *  Illiteracy - illiteracy rates in 1970, as a percent of the population
+  *  Life.Exp - the life expectancy in years of residents of the state in 1970
+  *  Murder - the murder and non-negligent manslaughter rate per 100,000 population in 1976 
+  *  HS.Grad - percent of high-school graduates in 1970
+  *  Frost - the mean number of days with minimum temperature below freezing from 1931-1960 in the capital or a large city of the state
+   * Area - the land area (in square miles) of the state
+
+We will try to build a model for life expectancy using regression trees, and employ cross-validation to improve our tree's performance.
+
+## Linear regression models
+Let's recreate the linear regression models we made in the previous homework question. First, predict Life.Exp using all of the other variables as the independent variables (Population, Income, Illiteracy, Murder, HS.Grad, Frost, Area ). Use the entire dataset to build the model.
+
+```{r}
+lr.mod <- lm(Life.Exp ~ ., data = statedata)
+summary(lr.mod) #Adjusted R-square: 0.6922
+```
+
+Calculate the sum of squared errors (SSE) between the predicted life expectancies using this model and the actual life expectancies:
+```{r}
+predLife <- predict(lr.mod)
+SSE <- sum((statedata$Life.Exp - predLife)^2)
+SSE #23.29714
+```
+
+Alternatively, we could have used:
+SSE <- sum(lr.mod$residuals^2)
+
+# Build a 2n model of Linear Regression
+Build a second linear regression model using just Population, Murder, Frost, and HS.Grad as independent variables (the best 4 variable model from the previous homework). What is the adjusted R-squared for this model?
+
+```{r}
+lr.mod2 <- lm(Life.Exp ~ Population + Murder + Frost + HS.Grad, data = statedata)
+summary(lr.mod2) #Adjusted R-squared: 0.7126 
+#Calculate SSE
+predLife2 <- predict(lr.mod2)
+SSE <- sum(lr.mod2$residuals^2)
+SSEbis <- sum((statedata$Life.Exp - predLife2)^2)
+SSE #23.30804
+SSEbis #23.30804
+```
+
+Trying different combinations of variables in linear regression controls the complexity of the model. This is similar to trying different numbers of splits in a tree, which is also controlling the complexity of the model.
+
+##Build a CART model
+Let's now build a CART model to predict Life.Exp using all of the other variables as independent variables (Population, Income, Illiteracy, Murder, HS.Grad, Frost, Area). We'll use the default minbucket parameter, so don't add the minbucket argument. Remember that in this problem we are **not as interested in predicting** life expectancies for new observations as **we are understanding how they relate to the other variables** we have, so we'll use all of the data to build our model. You shouldn't use the method="class" argument since this is a regression tree.
+
+Plot the tree. 
+
+```{r}
+library(rpart)
+library(rpart.plot)
+
+CARTlife <- rpart(Life.Exp ~ ., data = statedata)
+prp(CARTlife)
+```
+
+The only variable used in the CART is Murder
+
+## Calculate SSE for the CART model
+Use the regression tree you just built to predict life expectancies (using the predict function), and calculate the sum-of-squared-errors (SSE) like you did for linear regression. What is the SSE?
+```{r}
+pred.CARTlife <- predict(CARTlife)
+SSE_CART <- sum((statedata$Life.Exp - pred.CARTlife)^2)
+SSE_CART #28.99848
+```
+
+The error is higher than for the linear regression models. One reason might be that we haven't made the tree big enough. Set the minbucket parameter to 5, and recreate the tree.
+```{r}
+CARTlife2 <- rpart(Life.Exp ~ ., data = statedata, minbucket = 5)
+prp(CARTlife2)
+#Calculate SSE for this tree
+pred.CARTlife2 <- predict(CARTlife2)
+SSE_CART2 <- sum((statedata$Life.Exp - pred.CARTlife2)^2)
+SSE_CART2 #23.64283 -> The model performs better -> minbucket smaller -> more splits (danger overfitting)
+```
+Can we do even better? Create a tree that predicts Life.Exp using only Area, with the minbucket parameter to 1. What is the SSE of this newest tree?
+```{r}
+CARTlife3 <- rpart(Life.Exp ~ Area, data = statedata, minbucket = 1)
+prp(CARTlife3)
+#Calculate SSE
+pred.CARTlife3 <- predict(CARTlife3)
+SSE_CART3 <- sum((statedata$Life.Exp - pred.CARTlife3)^2)
+SSE_CART3 #9.312442
+```
+Note that the SSE is not zero here - we still make some mistakes. This is because there are other parameters in rpart that are also trying to prevent the tree from overfitting by setting default values. So our tree doesn't necessarily have one observation in each bucket - by setting minbucket=1 we are just **allowing** the tree to have one observation in each bucket. 
+
+By making the minbucket parameter very small, we could build an almost perfect model using just one variable, that is not even our most significant variable. However, if you plot the tree using prp(CARTmodel3), you can see that the tree has 22 splits! This is not a very interpretable model, and will not generalize well.
+
+Trees only look better than linear regression here because we are overfitting the model to the data.
+
+Area is not actually a very meaningful predictor. Without overfitting the tree, our model would not be very accurate only using Area. 
+
+##Cross-validation
+Adjusting the variables included in a linear regression model is a form of model tuning. In Problem 1 we showed that by removing variables in our linear regression model (tuning the model), we were able to maintain the fit of the model while using a simpler model. A rule of thumb is that simpler models are more interpretable and generalizeable. We will now tune our regression tree to see if we can improve the fit of our tree while keeping it as simple as possible.
+
+Load the caret library, and set the seed to 111. Set up the controls exactly like we did in the lecture (10-fold cross-validation) with cp varying over the range 0.01 to 0.50 in increments of 0.01. Use the train function to determine the best cp value for a CART model using all of the available independent variables, and the entire dataset statedata. What value of cp does the train function recommend? (Remember that the train function tells you to pick the largest value of cp with the lowest error when there are ties, and explains this at the bottom of the output.)
+
+```{r}
+library(caret)
+library(e1071)
+
+set.seed(111)
+# Define cross-validation experiment: a)define number of folds
+numFolds = trainControl( method = "cv", number = 10 )
+#then we need to pick the cp values
+cpGrid = expand.grid( .cp = seq(0.01,0.50,0.01)) 
+#Use train function to determine best cp. Method=rpart since we want to validate a CART
+train(Life.Exp ~ ., data = statedata, method = "rpart", trControl = numFolds, tuneGrid = cpGrid ) #cp = 0.12
+```
+ 
+##Create a tree using the cp from the cross-validation
+Create a tree with the value of cp you found in the previous problem, all of the available independent variables, and the entire dataset "statedata" as the training data. Then plot the tree. You'll notice that this is actually quite similar to the first tree we created with the initial model. Interpret the tree: we predict the life expectancy to be 70 if the murder rate is greater than or equal to
+```{r}
+CARTlife4 <- rpart(Life.Exp ~ ., data = statedata, cp = 0.12)
+prp(CARTlife4)
+```
+you can see that the life expectancy is predicted to be 70 if Murder is greater than or equal to 6.6 (the first split) and less than 11 (the second split
+```{r}
+#Calculate SSE
+pred.CARTlife4 <- predict(CARTlife4)
+SSE_CART4 <- sum((statedata$Life.Exp - pred.CARTlife4)^2)
+SSE_CART4 #32.86549
+```
+
+Recall the first tree (default parameters), second tree (minbucket = 5), and the third tree (selected with cross validation) we made. Given what you have learned about cross-validation, which of the three models would you expect to be better if we did use it for prediction on a test set? -> the 4th model
+
+At the end of Problem 2 we made a very complex tree using just Area. Use train with the same parameters as before but just using Area as an independent variable to find the best cp value (set the seed to 111 first). Then build a new tree using just Area and this value of cp.
+
+How many splits does the tree have?
+```{r}
+set.seed(111)
+train(Life.Exp ~ Area, data = statedata, method = "rpart", trControl = numFolds, tuneGrid = cpGrid ) #cp = 0.02
+CARTlife5 <- rpart(Life.Exp ~ Area, data=statedata, cp = 0.02)
+prp(CARTlife5)
+#Caclulate de SSE for this tree
+pred.CARTlife5 <- predict(CARTlife5)
+SSE_CART5 <- sum((statedata$Life.Exp - pred.CARTlife5)^2)
+SSE_CART5 # 44.2681
+
+```
+
+The original Area tree was overfitting the data - it was uninterpretable. Area is not as useful as Murder - if it was, it would have been in the cross-validated tree. Cross-validation is not designed to improve the fit on the training data, but it won't necessarily make it worse either. Cross-validation cannot guarantee improving the SSE on unseen data, although it often helps.
