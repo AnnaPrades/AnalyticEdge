@@ -1,0 +1,215 @@
+---
+title: "HW2 Automating Reviews in Medicine"
+author: "Anna Prades"
+date: "4 juliol de 2015"
+output: html_document
+---
+
+The medical literature is enormous. Pubmed, a database of medical publications maintained by the U.S. National Library of Medicine, has indexed over 23 million medical publications. Further, the rate of medical publication has increased over time, and now there are nearly 1 million new publications in the field each year, or more than one per minute.
+
+The large size and fast-changing nature of the medical literature has increased the need for reviews, which search databases like Pubmed for papers on a particular topic and then report results from the papers found. While such reviews are often performed manually, with multiple people reviewing each search result, this is tedious and time consuming. In this problem, we will see **how text analytics can be used to automate the process of information retrieval**.
+
+The dataset consists of the titles (variable title) and abstracts (variable abstract) of papers retrieved in a Pubmed search. Each search result is labeled with **whether the paper is a clinical trial testing a drug therapy for cancer (variable trial)**. These labels were obtained by two people reviewing each search result and accessing the actual paper if necessary, as part of a literature review of clinical trials testing drug therapies for advanced and metastatic breast cancer.
+
+#Problem 1
+## Loading the data
+Load clinical_trial.csv into a data frame called trials (remembering to add the argument stringsAsFactors=FALSE), and investigate the data frame with summary() and str().
+
+IMPORTANT NOTE: Some students have been getting errors like "invalid multibyte string" when performing certain parts of this homework question. If this is happening to you, use the argument fileEncoding="latin1" when reading in the file with read.csv. This should cause those errors to go away.
+
+We can use R's string functions to learn more about the titles and abstracts of the located papers. The nchar() function counts the number of characters in a piece of text. Using the nchar() function on the variables in the data frame, answer the following questions:
+
+How many characters are there in the longest abstract? (Longest here is defined as the abstract with the largest number of characters.) 
+```{r}
+trials <- read.csv("clinical_trial.csv", stringsAsFactors = FALSE)
+summary(trials)
+str(trials)
+# How many characters are there in the longest abstract?
+max(nchar(trials$abstract))
+summary(nchar(trials$abstract))
+
+# How many search results provided no abstract? 
+         table(nchar(trials$abstract) == 0) 
+ #Or
+         sum(nchar(trials$abstract) == 0)
+ #Or
+         str(subset(trials, nchar(trials$abstract) == 0))
+# What is the shortest title of any article?
+        which.min(nchar(trials$title))
+        trials$title[1258]
+        
+        #Or
+        trials$title[which.min(nchar(trials$title))]
+        
+```
+
+Because we have both title and abstract information for trials, we need to build two corpera instead of one. Name them corpusTitle and corpusAbstract.
+```{r}
+# 1) Convert the title variable to corpusTitle and the abstract variable to corpusAbstract.
+        library(tm)
+        corpusTitle <- Corpus(VectorSource(trials$title))
+        corpusAbstract <- Corpus(VectorSource(trials$abstract))
+#2) Convert corpusTitle and corpusAbstract to lowercase. After performing this step, remember to run the lines to convert them to Plaintext
+        corpusTitle = tm_map(corpusTitle, tolower)
+        strwrap(corpusTitle[[1]])
+        corpusAbstract <- tm_map(corpusAbstract, tolower)
+        corpusTitle = tm_map(corpusTitle, PlainTextDocument)
+        corpusAbstract = tm_map(corpusAbstract, PlainTextDocument)
+ #3) 3) Remove the punctuation in corpusTitle and corpusAbstract.
+        corpusTitle = tm_map(corpusTitle, removePunctuation)
+        strwrap(corpusTitle[[1]])
+        corpusAbstract <- tm_map(corpusAbstract, removePunctuation)
+#4) Remove the English language stop words from corpusTitle and corpusAbstract.
+        corpusTitle =  tm_map(corpusTitle, removeWords, stopwords("english"))
+        strwrap(corpusTitle[[1]])
+        corpusAbstract <-  tm_map(corpusAbstract, removeWords, stopwords("english"))
+        
+         #When removing stop words, use tm_map(corpusTitle, removeWords, sw) and tm_map(corpusAbstract,           removeWords, sw) instead of tm_map(corpusTitle, removeWords, stopwords("english")) and                      tm_map(corpusAbstract, removeWords, stopwords("english")). 
+
+# 5) Stem the words in corpusTitle and corpusAbstract (each stemming might take a few minutes)
+        corpusTitle =  tm_map(corpusTitle,  stemDocument)
+        strwrap(corpusTitle[[1]])
+        corpusAbstract <-  tm_map(corpusAbstract,  stemDocument)
+ # 6) Build a document term matrix called dtmTitle from corpusTitle and dtmAbstract from corpusAbstract.
+        dtmTitle <- DocumentTermMatrix(corpusTitle)
+        dtmAbstract <- DocumentTermMatrix(corpusAbstract)
+# 7) Limit dtmTitle and dtmAbstract to terms with sparseness of at most 95% (aka terms that appear in at least 5% of documents).
+        dtmTitle <- removeSparseTerms(dtmTitle, 0.95) #terms that at least appear in 5% of the documents
+        dtmAbstract <- removeSparseTerms(dtmAbstract, 0.95)
+# 8) Convert dtmTitle and dtmAbstract to data frames (keep the names dtmTitle and dtmAbstract).
+        dtmTitle <- as.data.frame(as.matrix(dtmTitle))
+        dtmAbstract <- as.data.frame(as.matrix(dtmAbstract))
+        #Check  length(stopwords("english")) returns 174 -> if not -> different script provided in course
+# How many terms remain in dtmTitle after removing sparse terms (aka how many columns does it have)?
+        ncol(dtmAbstract)
+        ncol(dtmTitle)
+        
+```
+
+# Building a Model
+```{r}
+#Using cbind(), combine dtmTitle and dtmAbstract into a single data frame called dtm:
+        dtm = cbind(dtmTitle, dtmAbstract) #there is a warning 
+        
+# We want to combine dtmTitle and dtmAbstract into a single data frame to
+# make predictions. However, some of the variables in these data frames have
+# the same names.
+
+        colnames(dtmTitle) <- paste0("T", colnames(dtmTitle))
+        colnames(dtmAbstract) <- paste0("A", colnames(dtmAbstract))
+        colnames(dtmTitle)
+        dtm = cbind(dtmTitle, dtmAbstract)
+#add the dependent variable "trial" to dtm
+        dtm$trial <- trials$trial
+#how many columns are there in this new dataframe?
+        dim(dtm)
+```
+
+ Set the random seed to 144 and use the sample.split function from the caTools package to split dtm into data frames named "train" and "test", putting 70% of the data in the training set.
+
+```{r}
+set.seed(144)
+        library(caTools)
+        spl = sample.split(dtm$trial, SplitRatio = 0.7)
+        train <- subset(dtm, spl == TRUE)
+        test <- subset(dtm, spl == FALSE)
+#What is the accuracy of the baseline model on the training set? 
+        table(train$trial)
+        prop.table(table(train$trial)) #0.5606759
+        
+```
+Build a CART model called trialCART, using all the independent variables in the training set to train the model, and then plot the CART model. Just use the default parameters to build the model (don't add a minbucket or cp value). Remember to add the method="class" argument, since this is a classification problem.
+
+
+```{r}
+#Build a CART model
+        library(rpart)
+        library(rpart.plot)
+        trialCART <- rpart(trial ~ ., data = train, method ="class")
+        prp(trialCART)
+#What is the name of the first variable the model split on?
+        
+```
+Obtain the training set predictions for the model (do not yet predict on the test set). Extract the predicted probability of a result being a trial (recall that **this involves not setting a type argument**, and keeping only the second column of the predict output). What is the maximum predicted probability for any result?
+```{r}
+predTrain = predict(trialCART, newdata=train, method="class")
+predTrain = predTrain[, 2]
+max(predTrain)
+# Alternatively, we could have done:
+predTrain = predict(trialCART)[,2]
+summary(predTrain) 
+```
+
+Because the CART tree assigns the same predicted probability to each leaf node and there are a small number of leaf nodes compared to data points, **we expect exactly the same maximum predicted probability**.
+
+```{r}
+#What is the training set accuracy of the CART model?
+#use a threshold probability of 0.5 to predict that an observation is a clinical trial
+t1 <- table(train$trial, predTrain > 0.5)
+t1
+accuracy <- sum(diag(t1))/margin.table(t1)
+accuracy
+sensitivity <- t1[2,2]/(t1[2,1] + t1[2,2])#TP/(TP+FN)
+sensitivity
+specificity <- t1[1,1]/(t1[1,1]+t1[1,2]) #TN /(TN + FP)
+specificity
+
+
+```
+
+#Evaluating the model on the testing set
+```{r}
+#What is the training set sensitivity of the CART model?
+predTest = predict(trialCART, newdata=test, method="class")
+predTest <- predTest[ ,2]
+t2 <- table(test$trial, predTest > 0.5)
+t2
+accuracy <- sum(diag(t2))/margin.table(t2)
+accuracy #0.7580645
+sensitivity <- t2[2,2]/(t2[2,1] + t2[2,2])#TP/(TP+FN)
+sensitivity
+#What is the training set specificity of the CART model?
+specificity <- t2[1,1]/(t2[1,1]+t2[1,2]) #TN /(TN + FP)
+specificity
+
+#Using the ROCR package, what is the testing set AUC of the prediction model?
+library(ROCR)
+predROCR = prediction(predTest, test$trial)
+perfROCR = performance(predROCR, "tpr", "fpr")
+plot(perfROCR, colorize=TRUE)
+# Compute AUC
+performance(predROCR, "auc")@y.values #0.8371063 It has good discrimination power
+```
+
+#Decision maker trade-offs
+The decision maker for this problem, a researcher performing a review of the medical literature, would use a model (like the CART one we built here) in the following workflow:
+
+1) For all of the papers retreived in the PubMed Search, predict which papers are clinical trials using the model. This yields some initial Set A of papers predicted to be trials, and some Set B of papers predicted not to be trials. (See the figure below.)
+
+2) Then, the decision maker manually reviews all papers in Set A, verifying that each paper meets the study's detailed inclusion criteria (for the purposes of this analysis, we assume this manual review is 100% accurate at identifying whether a paper in Set A is relevant to the study). This yields a more limited set of papers to be included in the study, which would ideally be all papers in the medical literature meeting the detailed inclusion criteria for the study.
+
+3) Perform the study-specific analysis, using data extracted from the limited set of papers identified in step 2.
+
+**What is the cost associated with the model in Step 1 making a false negative prediction?**
+A paper that should have been included in Set A will be missed, affecting the quality of the results of Step 3.
+** What is the cost associated with the model in Step 1 making a false positive prediction?**
+A paper will be mistakenly added to Set A, yielding additional work in Step 2 of the process but not affecting the quality of the results of Step 3.
+** Consequently, false negative should be avoided more than false positives**
+
+A false negative is more costly than a false positive; the decision maker should use a probability threshold less than 0.5 for the machine learning model
+You could check this manually:
+t1 <- table(train$trial, predTrain > 0.8)
+> t1
+   
+    FALSE TRUE
+  0   694   36
+  1   327  245
+> t1 <- table(train$trial, predTrain > 0.3)
+> t1
+   
+    FALSE TRUE
+  0   620  110
+  1   126  446
+False negatives are much higher when the threshold is higher.
+
+
