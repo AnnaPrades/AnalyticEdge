@@ -1,0 +1,115 @@
+---
+title: "HW 2 Market Segmentation"
+author: "Anna Prades"
+date: "11 juliol de 2015"
+output: html_document
+---
+
+Market segmentation is a strategy that divides a broad target market of customers into smaller, more similar groups, and then designs a marketing strategy specifically for each group. Clustering is a common technique for market segmentation since it automatically finds similar groups given a data set. 
+
+In this problem, we'll see how clustering can be used to find similar groups of customers who belong to an airline's frequent flyer program. The airline is trying to learn more about its customers so that it can target different customer segments with different types of mileage offers. 
+
+The file AirlinesCluster.csv contains information on 3,999 members of the frequent flyer program. This data comes from the textbook "Data Mining for Business Intelligence," by Galit Shmueli, Nitin R. Patel, and Peter C. Bruce. For more information, see the website for the book.
+
+There are seven different variables in the dataset, described below:
+
+   * Balance = number of miles eligible for award travel
+   * QualMiles = number of miles qualifying for TopFlight status
+   * BonusMiles = number of miles earned from non-flight bonus transactions in the past 12 months
+   * BonusTrans = number of non-flight bonus transactions in the past 12 months
+   * FlightMiles = number of flight miles in the past 12 months
+   * FlightTrans = number of flight transactions in the past 12 months
+   * DaysSinceEnroll = number of days since enrolled in the frequent flyer program
+   
+#PROBLEM 1. NORMALIZING THE DATA
+Read the dataset AirlinesCluster.csv into R and call it "airlines".
+
+Looking at the summary of airlines, which TWO variables have (on average) the smallest values? 
+```{r}
+airlines <- read.csv("AirlinesCluster.csv")
+summary(airlines)
+```
+
+In this problem, we will normalize our data before we run the clustering algorithms. Why is it important to normalize the data before clustering? If we don't normalize the data, the clustering will be dominated by the variables that are on a larger scale.
+
+Let's go ahead and normalize our data. You can normalize the variables in a data frame by using the preProcess function in the "caret" package. You should already have this package installed from Week 4 (we used it for cross validation -> getting the cp for CART), but if not, go ahead and install it with install.packages("caret"). Then load the package with library(caret).
+
+The first command pre-processes the data, and the second command performs the normalization. If you look at the summary of airlinesNorm, you should see that all of the variables now have mean zero. You can also see that each of the variables has standard deviation 1 by using the sd() function.
+
+```{r}
+library(caret)
+#create a normalized data frame called "airlinesNorm" by running the following commands:
+preproc = preProcess(airlines)
+airlinesNorm = predict(preproc, airlines)
+summary(airlinesNorm)
+sapply(airlinesNorm, sd)
+sapply(airlinesNorm, mean)
+
+```
+
+#Problem 2. HIERARCHICAL CLUSTERING
+Compute the distances between data points (using euclidean distance) and then run the Hierarchical clustering algorithm (using method="ward.D") on the normalized data. It may take a few minutes for the commands to finish since the dataset has a large number of observations for hierarchical clustering.
+
+Then, plot the dendrogram of the hierarchical clustering process. Suppose the airline is looking for somewhere between 2 and 10 clusters. According to the dendrogram, which of the following is NOT a good choice for the number of clusters?
+
+```{r}
+#Calculating euclidean distance
+distance = dist(airlinesNorm, method = "euclidean")
+#build the hclust model
+clusterAir = hclust(distance, method="ward.D")
+#Plot the dendogram
+plot(clusterAir)
+
+```
+
+If you run a horizontal line down the dendrogram, you can see that there is a long time that the line crosses 2 clusters, 3 clusters, or 7 clusters. However, **it it hard to see the horizontal line cross 6 clusters**. This means that 6 clusters is probably not a good choice.
+
+Suppose that after looking at the dendrogram and discussing with the marketing department, the airline decides to proceed with 5 clusters. Divide the data points into 5 clusters by using the cutree function. How many data points are in Cluster 1?
+
+```{r}
+clusterGroups = cutree(clusterAir, k = 5)
+#Split the data by cluster
+hierCluster <- split(airlines, clusterGroups)
+#Caulculate how many of them are there
+sapply(hierCluster, nrow) #Or: table(clusterGroups)
+```
+
+Now, use tapply to **compare the average values in each of the variables for the 5 clusters** (the centroids of the clusters). You may want to compute the average values of the **unnormalized data** so that it is easier to interpret. You can do this for the variable "Balance" with the following command:
+```{r}
+tapply(airlines$Balance, clusterGroups, mean)
+tapply(airlines$QualMiles, clusterGroups, mean)
+tapply(airlines$BonusMiles, clusterGroups, mean)
+tapply(airlines$BonusTrans, clusterGroups, mean)
+tapply(airlines$FlightMiles, clusterGroups, mean)
+tapply(airlines$FlightTrans, clusterGroups, mean)
+tapply(airlines$DaysSinceEnroll, clusterGroups, mean)
+#Alterantively, we could do:
+t1 <- sapply(split(airlines, clusterGroups), colMeans)
+round(t1, 5)
+```
+
+
+#Problem 3: K-MEANS CLUSTERING
+Now run the k-means clustering algorithm on the normalized data, again creating 5 clusters. Set the seed to 88 right before running the clustering algorithm, and set the argument iter.max to 1000.
+
+How many clusters have more than 1,000 observations?
+```{r}
+set.seed(88)
+k=5
+KMC = kmeans(airlinesNorm, centers = k, iter.max = 1000)
+str(KMC)
+#Subset the data into clusters and calculate the number of observations in each
+kCluster <- split(airlines, KMC$cluster)
+sapply(kCluster, nrow)
+table(KMC$cluster)
+
+```
+Now, compare the cluster centroids to each other either by dividing the data points into groups and then using tapply, or by looking at the output of kmeansClust$centers, where "kmeansClust" is the name of the output of the kmeans function. (Note that the output of kmeansClust$centers will be for the normalized data. If you want to look at the average values for the unnormalized data, you need to use tapply like we did for hierarchical clustering.)
+
+
+```{r}
+KMC$centers #Avarage in normalized data
+
+
+```
+

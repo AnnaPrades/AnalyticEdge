@@ -99,7 +99,7 @@ set.seed(1000)
 k=7
 KMC = kmeans(daily, centers = k)
 str(KMC)
-#Subset the data into clusters and calculat the number of observations in each
+#Subset the data into clusters and calculate the number of observations in each
 kCluster <- split(daily, KMC$cluster)
 sapply(kCluster, nrow)
 #Alternatively, you could answer these questions by
@@ -124,6 +124,13 @@ tail(sort(colMeans(Kcluster5)))
 tail(sort(colMeans(Kcluster6)))
 tail(sort(colMeans(Kcluster7)))
 
+```
+
+Once we have: *kCluster <- split(daily, KMC$cluster)*
+```{r}
+#Alternatively, and more efficiently
+top6  = function(x) { tail(sort(colMeans(x))) }
+sapply(kCluster, top6)
 ```
 
 For the rest of this problem, we'll ask you to compare how observations were assigned to clusters in the two different methods. Use the table function to compare the cluster assignment of hierarchical clustering to the cluster assignment of k-means clustering.
