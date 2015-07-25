@@ -1,0 +1,160 @@
+---
+title: "HW1 Election Forecasting"
+author: "Anna Prades"
+date: "23 juliol de 2015"
+output: html_document
+---
+
+In the recitation from Unit 3, we used logistic regression on polling data in order to construct US presidential election predictions. We separated our data into a training set, containing data from 2004 and 2008 polls, and a test set, containing the data from 2012 polls. We then proceeded to develop a logistic regression model to forecast the 2012 US presidential election.
+
+In this homework problem, we'll revisit our logistic regression model from Unit 3, and learn how to plot the output on a map of the United States. Unlike what we did in the Crime lecture, this time we'll be plotting predictions rather than data!
+
+First, load the ggplot2, maps, and ggmap packages using the library function. All three packages should be installed on your computer from lecture, but if not, you may need to install them too using the install.packages function.
+
+Then, load the US map and save it to the variable statesMap, like we did during the Crime lecture:
+
+statesMap = map_data("state")
+
+The maps package contains other built-in maps, including a US county map, a world map, and maps for France and Italy.
+
+```{r}
+library(ggplot2)
+library(maps)
+library(ggmap)
+statesMap = map_data("state")
+
+
+```
+
+#Problem 1
+ Problem 1.1 - Drawing a Map of the US (1 point possible)
+
+If you look at the structure of the statesMap data frame using the str function, you should see that there are 6 variables. One of the variables, group, defines the different shapes or polygons on the map. Sometimes a state may have multiple groups, for example, if it includes islands. How many different groups are there? 
+```{r}
+table(statesMap$group)
+#Alternatively
+length(table(statesMap$group)) 
+```
+
+##Drawing a map of the US
+You can draw a map of the United States by typing the following in your R console:
+
+```{r}
+ggplot(statesMap, aes(x = long, y = lat, group = group)) + geom_polygon(fill = "white", color = "black")
+```
+
+We specified two colors in geom_polygon -- fill and color. Which one defined the color of the outline of the states? -> color
+
+#Problem 2: coloring the predictions
+Now, let's color the map of the US according to our 2012 US presidential election predictions from the Unit 3 Recitation. We'll rebuild the model here, using the dataset PollingImputed.csv. Be sure to use this file so that you don't have to redo the imputation to fill in the missing values, like we did in the Unit 3 Recitation.
+
+Load the data using the read.csv function, and call it "polling". Then split the data using the subset function into a training set called "Train" that has observations from 2004 and 2008, and a testing set called "Test" that has observations from 2012.
+```{r}
+polling <- read.csv("PollingImputed.csv")
+str(polling)
+Train <- subset(polling, Year <2009)
+Test <- subset(polling, Year == 2012)
+str(Train)
+str(Test)
+
+```
+
+Note that we only have 45 states in our testing set, since we are missing observations for Alaska, Delaware, Alabama, Wyoming, and Vermont, so these states will not appear colored in our map.
+
+Then, create a logistic regression model and make predictions on the test set using the following commands:
+```{r}
+mod2 = glm(Republican~SurveyUSA+DiffCount, data=Train, family="binomial")
+
+TestPrediction = predict(mod2, newdata=Test, type="response")
+```
+
+TestPrediction gives the predicted probabilities for each state, but let's also create a vector of Republican/Democrat predictions by using the following command:
+        This creates a logic vector (Yes/No)
+```{r}
+TestPredictionBinary = as.numeric(TestPrediction > 0.5)
+```
+
+
+Now, put the predictions and state labels in a data.frame so that we can use ggplot:
+```{r}
+predictionDataFrame = data.frame(TestPrediction, TestPredictionBinary, Test$State)
+```
+
+To make sure everything went smoothly, answer the following questions.
+
+For how many states is our binary prediction 1 (for 2012), corresponding to Republican?
+
+```{r}
+table(predictionDataFrame$TestPredictionBinary)
+mean(predictionDataFrame$TestPrediction)
+```
+
+##Coloring the states by predictions
+Now, we need to merge "predictionDataFrame" with the map data "statesMap", like we did in lecture. Before doing so, we need to convert the Test.State variable to lowercase, so that it matches the region variable in statesMap. Do this by typing the following in your R console:
+
+```{r}
+predictionDataFrame$region = tolower(predictionDataFrame$Test.State)
+#Now, merge the two data frames using the following command:
+predictionMap = merge(statesMap, predictionDataFrame, by = "region")
+#Lastly, we need to make sure the observations are in order so that the map is drawn properly, by typing the following:
+predictionMap = predictionMap[order(predictionMap$order),]
+```
+
+
+```{r}
+#How many observations are there in predictionMap?
+str(predictionMap)
+#How many observations are in the states map?
+str(statesMap)
+```
+
+When we merge data, it only merged the observations that exist in both data sets. So since we are merging based on the region variable, we will lose all observations that have a value of "region" that doesn't exist in both data frames. You can change this default behavior by using the all.x and all.y arguments of the merge function. For more information, look at the help page for the merge function by typing ?merge in your R console.
+
+Now we are ready to color the US map with our predictions! You can color the states according to our binary predictions by typing the following in your R console:
+
+```{r}
+ggplot(predictionMap, aes(x = long, y = lat, group = group, fill = TestPredictionBinary)) + geom_polygon(color = "black")
+```
+
+The states appear light blue and dark blue in this map. Which color represents a Republican prediction? -> light blue
+
+We see that the legend displays a blue gradient for outcomes between 0 and 1. However, when plotting the binary predictions there are only two possible outcomes: 0 or 1. Let's replot the map with discrete outcomes. We can also change the color scheme to blue and red, to match the blue color associated with the Democratic Party in the US and the red color associated with the Republican Party in the US. This can be done with the following command:
+```{r}
+ggplot(predictionMap, aes(x = long, y = lat, group = group, fill = TestPredictionBinary))+ geom_polygon(color = "black") + scale_fill_gradient(low = "blue", high = "red", guide = "legend", breaks= c(0,1), labels = c("Democrat", "Republican"), name = "Prediction 2012")
+```
+
+Alternatively, we could plot the probabilities instead of the binary predictions. Change the plot command above to instead color the states by the variable TestPrediction. You should see a gradient of colors ranging from red to blue. Do the colors of the states in the map for TestPrediction look different from the colors of the states in the map with TestPredictionBinary? Why or why not?
+```{r}
+ggplot(predictionMap, aes(x = long, y = lat, group = group, fill = TestPrediction))+ geom_polygon(color = "black") + scale_fill_gradient(low = "blue", high = "red", guide = "legend", breaks= c(0,1), labels = c("Democrat", "Republican"), name = "Prediction 2012")
+```
+
+The only state that appears purple (the color between red and blue) is the state of Iowa, so the maps look very similar. If you take a look at TestPrediction, you can see that most of our predicted probabilities are very close to 0 or very close to 1. In fact, we don't have a single predicted probability between 0.065 and 0.93.
+
+NOTE: If you have a hard time seeing the red/blue gradient, feel free to change the color scheme, by changing the arguments low = "blue" and high = "red" to colors of your choice (to see all of the color options in R, type colors() in your R console). You can even change it to a gray scale, by changing the low and high colors to "gray" and "black".
+
+#Problem3: understanding the predictions
+In the 2012 election, the state of Florida ended up being a very close race. It was ultimately won by the Democratic party. Did we predict this state correctly or incorrectly? To see the names and locations of the different states, take a look at the World Atlas map here.
+
+```{r}
+predictionDataFrame$TestPrediction[predictionDataFrame$Test.State == "Florida"]
+```
+
+We predicted Republican for the state of Florida with high probability, meaning that we were very confident in our incorrect prediction! Historically, Florida is usually a close race, but our model doesn't know this. The model only uses polling results for the particular year. For Florida in 2012, Survey USA predicted a tie, but other polls predicted Republican, so our model predicted Republican. 
+
+#Problem 4: Parameter settings
+In this part, we'll explore what the different parameter settings of geom_polygon do. Throughout the problem, use the help page for geom_polygon, which can be accessed by ?geom_polygon. To see more information about a certain parameter, just type a question mark and then the parameter name to get the help page for that parameter. Experiment with different parameter settings to try and replicate the plots!
+
+We'll be asking questions about the following three plots:
+```{r}
+#Changing the lines from the outlining of states -> discontinuous
+ggplot(predictionMap, aes(x = long, y = lat, group = group, fill = TestPredictionBinary))+ geom_polygon(color = "black", linetype=3) + scale_fill_gradient(low = "blue", high = "red", guide = "legend", breaks= c(0,1), labels = c("Democrat", "Republican"), name = "Prediction 2012")
+
+#Changing the size of the lines
+ggplot(predictionMap, aes(x = long, y = lat, group = group, fill = TestPredictionBinary))+ geom_polygon(color = "black", size=3) + scale_fill_gradient(low = "blue", high = "red", guide = "legend", breaks= c(0,1), labels = c("Democrat", "Republican"), name = "Prediction 2012")
+
+#Changing the transparency of the colour
+ggplot(predictionMap, aes(x = long, y = lat, group = group, fill = TestPredictionBinary))+ geom_polygon(color = "black", alpha=0.3) + scale_fill_gradient(low = "blue", high = "red", guide = "legend", breaks= c(0,1), labels = c("Democrat", "Republican"), name = "Prediction 2012")
+
+
+```
+
